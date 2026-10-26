@@ -5,6 +5,7 @@ import re
 from typing import Optional, Tuple
 from sqlalchemy.orm import Session
 
+from backend.app.config import get_settings
 from backend.app.core.dsa_keywords import contains_dsa_keyword, has_prompt_injection
 from backend.app.models.ask_history import AskHistory
 from backend.app.models.user import User
@@ -14,6 +15,9 @@ from backend.app.schemas.ask import (
     ProblemInfo,
     SolutionInfo,
 )
+from backend.app.schemas.video import CreateVideoJobRequest
+from backend.app.services.intent_service import IntentService
+from backend.app.services.payload_builder import PayloadBuilder
 from backend.app.services.problem_service import ProblemService
 
 logger = logging.getLogger(__name__)
@@ -28,8 +32,13 @@ CONCEPT_MESSAGE = "Pebble will generate the explanation from your description."
 class AskService:
     """Service handling /ask queries and optional history persistence."""
 
-    def __init__(self, problem_service: Optional[ProblemService] = None):
+    def __init__(
+        self,
+        problem_service: Optional[ProblemService] = None,
+        intent_service: Optional[IntentService] = None,
+    ):
         self.problem_service = problem_service or ProblemService()
+        self.intent_service = intent_service or IntentService()
 
     def _extract_code_block(self, text: str) -> Tuple[bool, Optional[str], Optional[str], str]:
         """Detect and extract fenced or pasted code blocks.
@@ -272,6 +281,108 @@ class AskService:
 
             self._safe_save_history(db, user, text, response.status, prob_info.id, programming_language)
             return response
+
+        # 4. LLM Intent Classifier (if enabled)
+        settings = get_settings()
+        if (settings.INTENT_PROVIDER or "off").strip().lower() != "off":
+            classification = self.intent_service.classify(text)
+            if classification is not None:
+                if classification.intent in ("chitchat", "off_topic"):
+                    status_str = "chitchat" if classification.intent == "chitchat" else "out_of_scope"
+                    response = AskResponse(
+                        status=status_str,
+                        message=classification.reply,
+                        available_languages=[],
+                        can_generate=False,
+                    )
+                    if status_str != "out_of_scope":
+                        self._safe_save_history(db, user, text, status_str, None, programming_language)
+                    return response
+
+                if classification.intent == "dsa_problem" and classification.clean_title:
+                    clean_res = self.problem_service.resolve_problem(
+                        db=db, q=classification.clean_title, language=programming_language
+                    )
+                    if not clean_res.resolved and " " in classification.clean_title:
+                        clean_res = self.problem_service.resolve_problem(
+                            db=db, q=classification.clean_title.replace(" ", "-"), language=programming_language
+                        )
+                    if clean_res.resolved and clean_res.problem:
+                        prob_info = ProblemInfo(
+                            id=clean_res.problem.id,
+                            slug=clean_res.problem.slug,
+                            title=clean_res.problem.title,
+                            source_url=clean_res.problem.source_url,
+                        )
+                        v_req = CreateVideoJobRequest(
+                            problem_id=clean_res.problem.id,
+                            programming_language=programming_language,
+                            title=clean_res.problem.title,
+                        )
+                        if clean_res.solution:
+                            v_pl = PayloadBuilder.build_payload(
+                                problem_id=clean_res.problem.id,
+                                slug=clean_res.problem.slug,
+                                title=clean_res.problem.title,
+                                code=clean_res.solution.code,
+                                programming_language=programming_language,
+                                validated=clean_res.solution.validated,
+                            )
+                            response = AskResponse(
+                                status="found",
+                                message=f"Found verified {self._format_language(clean_res.solution.language)} solution for '{clean_res.problem.title}'.",
+                                problem=prob_info,
+                                solution=SolutionInfo(
+                                    language=clean_res.solution.language,
+                                    code=clean_res.solution.code,
+                                    validated=True,
+                                ),
+                                available_languages=clean_res.available_languages,
+                                can_generate=True,
+                                video_request=v_req,
+                                video_payload=v_pl,
+                            )
+                        else:
+                            v_pl = PayloadBuilder.build_payload(
+                                problem_id=clean_res.problem.id,
+                                slug=clean_res.problem.slug,
+                                title=clean_res.problem.title,
+                                programming_language=programming_language,
+                            )
+                            response = AskResponse(
+                                status="no_solution",
+                                message=f"No stored {self._format_language(programming_language)} solution for this problem. Pebble will generate one with the video.",
+                                problem=prob_info,
+                                solution=None,
+                                available_languages=clean_res.available_languages,
+                                can_generate=True,
+                                video_request=v_req,
+                                video_payload=v_pl,
+                            )
+                        self._safe_save_history(db, user, text, response.status, prob_info.id, programming_language)
+                        return response
+
+                # algorithm_concept or unresolved dsa_problem
+                if classification.intent in ("algorithm_concept", "dsa_problem"):
+                    c_title = (classification.clean_title or text)[:300]
+                    v_req = CreateVideoJobRequest(
+                        text=c_title,
+                        programming_language=programming_language,
+                    )
+                    v_pl = PayloadBuilder.build_payload(
+                        text=c_title,
+                        programming_language=programming_language,
+                    )
+                    response = AskResponse(
+                        status="concept",
+                        message=classification.reply or CONCEPT_MESSAGE,
+                        available_languages=[],
+                        can_generate=True,
+                        video_request=v_req,
+                        video_payload=v_pl,
+                    )
+                    self._safe_save_history(db, user, text, response.status, None, programming_language)
+                    return response
 
         # Case B: Problem NOT Resolved
         # Scope gate: cap text at 300 characters for concept checking

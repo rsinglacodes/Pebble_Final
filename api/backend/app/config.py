@@ -73,6 +73,39 @@ class Settings(BaseSettings):
         description="Video generation job timeout in minutes",
     )
 
+    INTENT_PROVIDER: str = Field(
+        default="off",
+        description="LLM intent classification provider ('off', 'mock', 'azure')",
+    )
+    AZURE_OPENAI_ENDPOINT: str = Field(
+        default="",
+        description="Azure OpenAI endpoint URL",
+    )
+    AZURE_OPENAI_API_KEY: str = Field(
+        default="",
+        description="Azure OpenAI API key",
+    )
+    AZURE_OPENAI_DEPLOYMENT: str = Field(
+        default="",
+        description="Azure OpenAI deployment name",
+    )
+    AZURE_OPENAI_API_VERSION: str = Field(
+        default="2024-02-15-preview",
+        description="Azure OpenAI API version",
+    )
+    INTENT_TIMEOUT_SECONDS: float = Field(
+        default=10.0,
+        description="Timeout in seconds for intent classification requests",
+    )
+    GROQ_API_KEY: str = Field(
+        default="",
+        description="Groq API key",
+    )
+    GROQ_MODEL: str = Field(
+        default="llama-3.1-8b-instant",
+        description="Groq model name",
+    )
+
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def assemble_cors_origins(cls, value: Union[str, List[str]]) -> List[str]:

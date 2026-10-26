@@ -1,7 +1,9 @@
 """Pydantic schemas for POST /ask endpoint."""
 
-from typing import List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field
+
+from backend.app.schemas.video import CreateVideoJobRequest
 
 
 class AskRequest(BaseModel):
@@ -49,10 +51,12 @@ class CandidateInfo(BaseModel):
 class AskResponse(BaseModel):
     """Response structure for POST /ask."""
 
-    status: Literal["found", "no_solution", "clarify", "concept", "out_of_scope"]
+    status: Literal["found", "no_solution", "clarify", "concept", "out_of_scope", "chitchat"]
     message: str
     problem: Optional[ProblemInfo] = None
     solution: Optional[SolutionInfo] = None
     available_languages: List[str] = Field(default_factory=list)
     candidates: Optional[List[CandidateInfo]] = None
     can_generate: bool
+    video_request: Optional[CreateVideoJobRequest] = None
+    video_payload: Optional[Dict[str, Any]] = None
