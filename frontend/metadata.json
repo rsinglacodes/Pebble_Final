@@ -1,0 +1,8 @@
+{
+  "name": "pebble",
+  "description": "pebble — Visualize your code, learn the logic, and make every algorithm click.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
