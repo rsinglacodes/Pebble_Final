@@ -65,25 +65,89 @@ export const HexBackground: React.FC<HexBackgroundProps> = ({
     return dots;
   }, []);
 
-  // Smooth rAF parallax layer without React re-renders
+  // Smooth rAF parallax layer without React re-renders, paused when off-screen or tab hidden
   useEffect(() => {
     if (isStatic) return;
     let animId: number;
+    let isVisible = true;
+    let isDocVisible = typeof document !== 'undefined' ? !document.hidden : true;
+    let isRunning = false;
     let curX = 0;
     let curY = 0;
+    let lastRenderedX = -9999;
+    let lastRenderedY = -9999;
 
-    const loop = () => {
-      const p = getPointer();
-      curX += (-p.x * 12 - curX) * 0.08;
-      curY += (-p.y * 12 - curY) * 0.08;
-      if (layerRef.current) {
-        layerRef.current.style.transform = `translate3d(${curX.toFixed(2)}px, ${curY.toFixed(2)}px, 0)`;
-      }
+    const startLoop = () => {
+      if (isRunning || !isVisible || !isDocVisible) return;
+      isRunning = true;
       animId = requestAnimationFrame(loop);
     };
 
-    animId = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(animId);
+    const stopLoop = () => {
+      if (!isRunning) return;
+      isRunning = false;
+      cancelAnimationFrame(animId);
+    };
+
+    const loop = () => {
+      if (!isVisible || !isDocVisible) {
+        isRunning = false;
+        return;
+      }
+
+      const p = getPointer();
+      const targetX = -p.x * 12;
+      const targetY = -p.y * 12;
+
+      curX += (targetX - curX) * 0.08;
+      curY += (targetY - curY) * 0.08;
+
+      // Skip redundant DOM transform updates if settled within 0.02px
+      if (Math.abs(curX - lastRenderedX) > 0.02 || Math.abs(curY - lastRenderedY) > 0.02) {
+        lastRenderedX = curX;
+        lastRenderedY = curY;
+        if (layerRef.current) {
+          layerRef.current.style.transform = `translate3d(${curX.toFixed(2)}px, ${curY.toFixed(2)}px, 0)`;
+        }
+      }
+
+      animId = requestAnimationFrame(loop);
+    };
+
+    const el = layerRef.current;
+    let observer: IntersectionObserver | null = null;
+    if (el && typeof IntersectionObserver !== 'undefined') {
+      observer = new IntersectionObserver(
+        ([entry]) => {
+          isVisible = entry.isIntersecting;
+          if (isVisible) {
+            startLoop();
+          } else {
+            stopLoop();
+          }
+        },
+        { threshold: 0 }
+      );
+      observer.observe(el);
+    }
+
+    const handleVisibility = () => {
+      isDocVisible = !document.hidden;
+      if (isDocVisible) {
+        startLoop();
+      } else {
+        stopLoop();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    startLoop();
+
+    return () => {
+      stopLoop();
+      observer?.disconnect();
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, [isStatic]);
 
   const hexPath =

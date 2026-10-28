@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { LogOut, User, Sparkles } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import { getSavedSession } from '../../lib/auth.ts';
 
 interface UserChipProps {
@@ -56,7 +56,7 @@ export const UserChip: React.FC<UserChipProps> = ({ onLogout, onOpenSettings }) 
       {/* Popover Menu */}
       {isOpen && (
         <div
-          className="absolute bottom-12 left-0 sm:left-auto sm:right-0 mb-2 w-64 bg-[#FAFAFB] rounded-[20px] p-2.5 shadow-[0_20px_50px_rgba(0,0,0,0.14)] border border-black/[0.08] z-50 animate-popIn"
+          className="absolute left-full ml-3 bottom-0 w-64 bg-[#FAFAFB] rounded-[20px] p-2.5 shadow-[0_20px_50px_rgba(0,0,0,0.14)] border border-black/[0.08] z-50 animate-popIn"
           style={{
             animationDuration: '180ms',
           }}
@@ -76,33 +76,6 @@ export const UserChip: React.FC<UserChipProps> = ({ onLogout, onOpenSettings }) 
 
           {/* Action List */}
           <div className="py-1 space-y-0.5">
-            <button
-              type="button"
-              onClick={() => {
-                setIsOpen(false);
-                onOpenSettings?.();
-              }}
-              data-cursor="button"
-              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-[12px] text-xs font-medium text-[#44444C] hover:text-[#111113] hover:bg-black/[0.04] transition-colors cursor-pointer text-left"
-            >
-              <User className="w-3.5 h-3.5 text-[#6C5CFF]" />
-              <span>Preferences</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setIsOpen(false);
-              }}
-              data-cursor="button"
-              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-[12px] text-xs font-medium text-[#44444C] hover:text-[#111113] hover:bg-black/[0.04] transition-colors cursor-pointer text-left"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-[#3CC8FF]" />
-              <span>Algorithm Library</span>
-            </button>
-
-            <div className="w-full h-[1px] bg-black/[0.06] my-1" />
-
             <button
               type="button"
               onClick={() => {

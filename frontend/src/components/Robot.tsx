@@ -77,7 +77,7 @@ export const Robot: React.FC<RobotProps> = ({
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.08;
-    renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 1.5));
     renderer.setSize(width, height);
     container.appendChild(renderer.domElement);
 
@@ -204,11 +204,98 @@ export const Robot: React.FC<RobotProps> = ({
       c.closePath();
     }
 
-    // Animation Loop
+    // Pre-render static Visor (rim + black visor + sheen gradient) ONCE to offscreen canvas
+    const visorCanvas = document.createElement('canvas');
+    visorCanvas.width = 1024;
+    visorCanvas.height = 1024;
+    const vCtx = visorCanvas.getContext('2d', { willReadFrequently: true })!;
+
+    const vWidth = 760;
+    const vHeight = 510;
+    const vRadius = 210;
+    const vX = (1024 - vWidth) / 2;
+    const vY = (1024 - vHeight) / 2;
+
+    const rimGradient = vCtx.createLinearGradient(vX, vY, vX + vWidth, vY + vHeight);
+    const [c0, c1, c2] = defaultColors.rimColors;
+    rimGradient.addColorStop(0, c0);
+    rimGradient.addColorStop(0.5, c1);
+    rimGradient.addColorStop(1, c2);
+
+    vCtx.save();
+    drawSquircle(vCtx, vX, vY, vWidth, vHeight, vRadius);
+    vCtx.fillStyle = rimGradient;
+    vCtx.shadowColor = c1;
+    vCtx.shadowBlur = 16;
+    vCtx.fill();
+    vCtx.restore();
+
+    const rimInset = 36;
+    const innerX = vX + rimInset;
+    const innerY = vY + rimInset;
+    const innerW = vWidth - rimInset * 2;
+    const innerH = vHeight - rimInset * 2;
+    const innerR = Math.max(20, vRadius - rimInset);
+
+    vCtx.save();
+    drawSquircle(vCtx, innerX, innerY, innerW, innerH, innerR);
+    vCtx.fillStyle = '#0B0B0E';
+    vCtx.fill();
+
+    const sheenGrad = vCtx.createLinearGradient(innerX, innerY, innerX, innerY + innerH * 0.55);
+    sheenGrad.addColorStop(0, 'rgba(255, 255, 255, 0.16)');
+    sheenGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.04)');
+    sheenGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    vCtx.fillStyle = sheenGrad;
+    vCtx.fill();
+    vCtx.restore();
+
+    // Cache container rect to avoid forced layout reflow every frame
+    let cachedRect = container.getBoundingClientRect();
+    const updateRect = () => {
+      if (container) cachedRect = container.getBoundingClientRect();
+    };
+    window.addEventListener('resize', updateRect);
+    window.addEventListener('scroll', updateRect, { passive: true });
+
+    // State trackers to skip redundant work
+    let lastEyeShiftX = -9999;
+    let lastEyeShiftY = -9999;
+    let lastBlinkValue = -9999;
+    let lastShadowScale = -9999;
+    let lastShadowOpacity = -9999;
+    let lastRaycastClientX = -9999;
+    let lastRaycastClientY = -9999;
+    let lastRaycastRotY = -9999;
+    let lastRaycastRotX = -9999;
+
+    // Animation Loop with Visibility and Intersection Observer
     let clock = new THREE.Clock();
     let frameId = 0;
+    let isVisible = true;
+    let isDocVisible = typeof document !== 'undefined' ? !document.hidden : true;
+    let isRunning = false;
+
+    const startLoop = () => {
+      if (isRunning || !isVisible || !isDocVisible) return;
+      isRunning = true;
+      clock.start();
+      frameId = requestAnimationFrame(render);
+    };
+
+    const stopLoop = () => {
+      if (!isRunning) return;
+      isRunning = false;
+      cancelAnimationFrame(frameId);
+      clock.stop();
+    };
 
     const render = () => {
+      if (!isVisible || !isDocVisible) {
+        isRunning = false;
+        return;
+      }
+
       frameId = requestAnimationFrame(render);
 
       const delta = Math.min(clock.getDelta(), 0.1);
@@ -228,19 +315,26 @@ export const Robot: React.FC<RobotProps> = ({
       const bobY = Math.sin(time * 2.1) * 0.085;
       const effectiveY = introY + (introProgress >= 0.9 ? bobY : 0);
 
-      // Floor shadow scale & opacity
+      // Floor shadow scale & opacity (only update DOM when changed)
       if (shadowRef.current) {
         const shadowScale = 1.0 - (effectiveY / 0.12) * 0.15;
         const shadowOpacity = Math.max(0.18, 0.42 - (effectiveY / 0.12) * 0.16);
         const introShadowOpacity = Math.min(1.0, introProgress * 1.5) * shadowOpacity;
-        shadowRef.current.style.transform = `scale(${Math.max(0.7, shadowScale * introScale)})`;
-        shadowRef.current.style.opacity = `${introShadowOpacity}`;
+        const finalScale = Math.max(0.7, shadowScale * introScale);
+        if (
+          Math.abs(finalScale - lastShadowScale) > 0.005 ||
+          Math.abs(introShadowOpacity - lastShadowOpacity) > 0.005
+        ) {
+          lastShadowScale = finalScale;
+          lastShadowOpacity = introShadowOpacity;
+          shadowRef.current.style.transform = `scale(${finalScale})`;
+          shadowRef.current.style.opacity = `${introShadowOpacity}`;
+        }
       }
 
-      // 3. Pointer Relative to Robot's Actual On-Screen Center (using live coordinates)
-      const rect = container.getBoundingClientRect();
-      const robotCenterX = rect.left + rect.width / 2;
-      const robotCenterY = rect.top + rect.height / 2;
+      // 3. Pointer Relative to Robot's Actual On-Screen Center (using cached coordinates)
+      const robotCenterX = cachedRect.left + cachedRect.width / 2;
+      const robotCenterY = cachedRect.top + cachedRect.height / 2;
       const halfW = (window.innerWidth || 1) * 0.5;
       const halfH = (window.innerHeight || 1) * 0.5;
 
@@ -266,13 +360,26 @@ export const Robot: React.FC<RobotProps> = ({
       const stiffness = 85.0;
       const damping = 0.82;
 
-      const yawForce = (targetYaw - currentYaw) * stiffness;
-      yawVel = (yawVel + yawForce * delta) * damping;
-      currentYaw += yawVel * delta;
+      const yawDiff = targetYaw - currentYaw;
+      const pitchDiff = targetPitch - currentPitch;
 
-      const pitchForce = (targetPitch - currentPitch) * stiffness;
-      pitchVel = (pitchVel + pitchForce * delta) * damping;
-      currentPitch += pitchVel * delta;
+      if (Math.abs(yawDiff) < 0.0001 && Math.abs(yawVel) < 0.0001) {
+        currentYaw = targetYaw;
+        yawVel = 0;
+      } else {
+        const yawForce = yawDiff * stiffness;
+        yawVel = (yawVel + yawForce * delta) * damping;
+        currentYaw += yawVel * delta;
+      }
+
+      if (Math.abs(pitchDiff) < 0.0001 && Math.abs(pitchVel) < 0.0001) {
+        currentPitch = targetPitch;
+        pitchVel = 0;
+      } else {
+        const pitchForce = pitchDiff * stiffness;
+        pitchVel = (pitchVel + pitchForce * delta) * damping;
+        currentPitch += pitchVel * delta;
+      }
 
       headGroup.rotation.y = currentYaw;
       headGroup.rotation.x = currentPitch;
@@ -299,55 +406,7 @@ export const Robot: React.FC<RobotProps> = ({
         }
       }
 
-      // 6. Draw 2D Face Texture (Full clearRect and redraw each frame)
-      ctx.clearRect(0, 0, 1024, 1024);
-
-      // Visor dimensions: 760px x 510px with smooth 210px radius, drawn comfortably inside 1024x1024
-      const vWidth = 760;
-      const vHeight = 510;
-      const vRadius = 210;
-      const vX = (1024 - vWidth) / 2;
-      const vY = (1024 - vHeight) / 2;
-
-      // Outer gradient RIM (purple -> indigo -> sky blue)
-      const rimGradient = ctx.createLinearGradient(vX, vY, vX + vWidth, vY + vHeight);
-      const [c0, c1, c2] = defaultColors.rimColors;
-      rimGradient.addColorStop(0, c0);
-      rimGradient.addColorStop(0.5, c1);
-      rimGradient.addColorStop(1, c2);
-
-      // Draw Outer Rim with soft glowing bevel
-      ctx.save();
-      drawSquircle(ctx, vX, vY, vWidth, vHeight, vRadius);
-      ctx.fillStyle = rimGradient;
-      ctx.shadowColor = c1;
-      ctx.shadowBlur = 16;
-      ctx.fill();
-      ctx.restore();
-
-      // Draw Inner Black Visor
-      const rimInset = 36;
-      const innerX = vX + rimInset;
-      const innerY = vY + rimInset;
-      const innerW = vWidth - rimInset * 2;
-      const innerH = vHeight - rimInset * 2;
-      const innerR = Math.max(20, vRadius - rimInset);
-
-      ctx.save();
-      drawSquircle(ctx, innerX, innerY, innerW, innerH, innerR);
-      ctx.fillStyle = '#0B0B0E';
-      ctx.fill();
-
-      // Visor subtle specular curved sheen
-      const sheenGrad = ctx.createLinearGradient(innerX, innerY, innerX, innerY + innerH * 0.55);
-      sheenGrad.addColorStop(0, 'rgba(255, 255, 255, 0.16)');
-      sheenGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.04)');
-      sheenGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
-      ctx.fillStyle = sheenGrad;
-      ctx.fill();
-      ctx.restore();
-
-      // Eye shift inside visor matches head rotation direction
+      // 6. Draw 2D Face Texture (ONLY redraw and update texture when eyes/blink actually change)
       const eyeShiftX = (currentYaw / maxYaw) * 36;
       const eyeShiftY = (currentPitch / maxPitch) * 26;
 
@@ -359,58 +418,116 @@ export const Robot: React.FC<RobotProps> = ({
       const leftEyeX = 512 - eyeSep / 2 + eyeShiftX;
       const rightEyeX = 512 + eyeSep / 2 + eyeShiftX;
 
-      const drawEye = (centerX: number) => {
-        ctx.save();
-        ctx.translate(centerX, eyeCenterY);
-        ctx.beginPath();
-        const rx = eyeBaseW / 2;
-        const ry = Math.max(1, eyeBaseH / 2);
-        ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
-        ctx.fillStyle = '#FFFFFF';
-        ctx.shadowColor = 'rgba(255, 255, 255, 0.45)';
-        ctx.shadowBlur = 8;
-        ctx.fill();
+      const faceChanged =
+        Math.abs(eyeShiftX - lastEyeShiftX) > 0.08 ||
+        Math.abs(eyeShiftY - lastEyeShiftY) > 0.08 ||
+        Math.abs(blinkValue - lastBlinkValue) > 0.005;
 
-        // Soft specular eye glint
-        if (blinkValue > 0.6) {
+      if (faceChanged) {
+        lastEyeShiftX = eyeShiftX;
+        lastEyeShiftY = eyeShiftY;
+        lastBlinkValue = blinkValue;
+
+        ctx.clearRect(0, 0, 1024, 1024);
+        ctx.drawImage(visorCanvas, 0, 0);
+
+        const drawEye = (centerX: number) => {
+          ctx.save();
+          ctx.translate(centerX, eyeCenterY);
           ctx.beginPath();
-          ctx.ellipse(rx * 0.32, -ry * 0.32, rx * 0.28, ry * 0.22, 0, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-          ctx.shadowBlur = 0;
+          const rx = eyeBaseW / 2;
+          const ry = Math.max(1, eyeBaseH / 2);
+          ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+          ctx.fillStyle = '#FFFFFF';
+          ctx.shadowColor = 'rgba(255, 255, 255, 0.45)';
+          ctx.shadowBlur = 8;
           ctx.fill();
-        }
 
-        ctx.restore();
-      };
+          // Soft specular eye glint
+          if (blinkValue > 0.6) {
+            ctx.beginPath();
+            ctx.ellipse(rx * 0.32, -ry * 0.32, rx * 0.28, ry * 0.22, 0, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+            ctx.shadowBlur = 0;
+            ctx.fill();
+          }
 
-      drawEye(leftEyeX);
-      drawEye(rightEyeX);
+          ctx.restore();
+        };
 
-      faceTexture.needsUpdate = true;
+        drawEye(leftEyeX);
+        drawEye(rightEyeX);
 
-      // 7. Raycasting for hover detection on the Robot
-      const normMouseX = (currentClientX / (window.innerWidth || 1)) * 2 - 1;
-      const normMouseY = -((currentClientY / (window.innerHeight || 1)) * 2 - 1);
-      mouseVector.set(normMouseX, normMouseY);
-      raycaster.setFromCamera(mouseVector, camera);
-      const intersects = raycaster.intersectObject(headMesh);
+        faceTexture.needsUpdate = true;
+      }
 
-      if (intersects.length > 0) {
-        if (!isRobotHovered) {
-          isRobotHovered = true;
-          onInteractiveHoverStart?.('robot');
-        }
-      } else {
-        if (isRobotHovered) {
-          isRobotHovered = false;
-          onInteractiveHoverEnd?.();
+      // 7. Raycasting for hover detection on the Robot (skip when pointer and head are stationary)
+      let shouldRaycast = false;
+      if (
+        Math.abs(currentClientX - lastRaycastClientX) > 0.5 ||
+        Math.abs(currentClientY - lastRaycastClientY) > 0.5 ||
+        Math.abs(headGroup.rotation.y - lastRaycastRotY) > 0.015 ||
+        Math.abs(headGroup.rotation.x - lastRaycastRotX) > 0.015
+      ) {
+        shouldRaycast = true;
+        lastRaycastClientX = currentClientX;
+        lastRaycastClientY = currentClientY;
+        lastRaycastRotY = headGroup.rotation.y;
+        lastRaycastRotX = headGroup.rotation.x;
+      }
+
+      if (shouldRaycast) {
+        const normMouseX = (currentClientX / (window.innerWidth || 1)) * 2 - 1;
+        const normMouseY = -((currentClientY / (window.innerHeight || 1)) * 2 - 1);
+        mouseVector.set(normMouseX, normMouseY);
+        raycaster.setFromCamera(mouseVector, camera);
+        const intersects = raycaster.intersectObject(headMesh);
+
+        if (intersects.length > 0) {
+          if (!isRobotHovered) {
+            isRobotHovered = true;
+            onInteractiveHoverStart?.('robot');
+          }
+        } else {
+          if (isRobotHovered) {
+            isRobotHovered = false;
+            onInteractiveHoverEnd?.();
+          }
         }
       }
 
       renderer.render(scene, camera);
     };
 
-    frameId = requestAnimationFrame(render);
+    // IntersectionObserver to pause loop when offscreen
+    let observer: IntersectionObserver | null = null;
+    if (container && typeof IntersectionObserver !== 'undefined') {
+      observer = new IntersectionObserver(
+        ([entry]) => {
+          isVisible = entry.isIntersecting;
+          if (isVisible) {
+            startLoop();
+          } else {
+            stopLoop();
+          }
+        },
+        { threshold: 0 }
+      );
+      observer.observe(container);
+    }
+
+    // VisibilityChange to pause loop when tab is in background
+    const handleVisibility = () => {
+      isDocVisible = !document.hidden;
+      if (isDocVisible) {
+        startLoop();
+      } else {
+        stopLoop();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    startLoop();
 
     // Resize Handler
     const handleResize = () => {
@@ -420,13 +537,18 @@ export const Robot: React.FC<RobotProps> = ({
       camera.aspect = newW / newH;
       camera.updateProjectionMatrix();
       renderer.setSize(newW, newH);
+      updateRect();
     };
 
     window.addEventListener('resize', handleResize);
 
     return () => {
-      cancelAnimationFrame(frameId);
+      stopLoop();
+      observer?.disconnect();
+      document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('resize', handleResize);
+      window.removeEventListener('resize', updateRect);
+      window.removeEventListener('scroll', updateRect);
       if (renderer.domElement && container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
       }

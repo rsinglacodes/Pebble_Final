@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { HexBackground } from './components/HexBackground.tsx';
 import { Nav } from './components/Nav.tsx';
@@ -13,6 +13,7 @@ import { useAuthModal } from './hooks/useAuthModal.ts';
 import { AuthModal } from './components/Auth/AuthModal.tsx';
 import { useAppRoute } from './hooks/useAppRoute.ts';
 import { HomePage } from './components/Home/HomePage.tsx';
+import { getSavedSession, AuthUser } from './lib/auth.ts';
 
 export default function App() {
   const pointer = usePointer();
@@ -21,6 +22,20 @@ export default function App() {
   const { route, navigate, logout } = useAppRoute(() => {
     authModal.openLogIn();
   });
+
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => getSavedSession());
+
+  useEffect(() => {
+    setCurrentUser(getSavedSession());
+  }, [route]);
+
+  useEffect(() => {
+    const handleStorage = () => {
+      setCurrentUser(getSavedSession());
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
 
   const [activeLinkId, setActiveLinkId] = useState('explore');
 
@@ -35,15 +50,28 @@ export default function App() {
     }
   };
 
-  // Fix 3: Every Adopt Me button ALWAYS opens the auth overlay on the SIGN UP tab
+  // Fix 3: Every Start Learning button ALWAYS opens the auth overlay on the SIGN UP tab
   const handleAdoptClick = () => {
     authModal.openSignUp();
   };
 
-  const handleAuthSuccessNavigate = () => {
-    authModal.close();
+  const handleOpenChatbot = () => {
     navigate('home');
   };
+
+  const handleLogout = () => {
+    logout();
+    setCurrentUser(null);
+  };
+
+  const handleAuthSuccessNavigate = () => {
+    authModal.close();
+    setCurrentUser(getSavedSession());
+    navigate('home');
+  };
+
+  const isLoggedIn = Boolean(currentUser);
+  const userName = currentUser?.name;
 
   return (
     <div className="relative w-full min-h-screen bg-[#F7F7F8] p-2 select-none overflow-x-clip">
@@ -62,7 +90,7 @@ export default function App() {
             className="fixed inset-0 z-30"
           >
             <HomePage
-              onLogout={logout}
+              onLogout={handleLogout}
               onGoToLanding={() => navigate('landing')}
             />
           </motion.div>
@@ -98,9 +126,12 @@ export default function App() {
                   <Nav
                     activeLinkId={activeLinkId}
                     onSelectLink={handleNavSelect}
-                    onInteractiveHoverStart={() => {}}
-                    onInteractiveHoverEnd={() => {}}
+                    onInteractiveHoverStart={() => { }}
+                    onInteractiveHoverEnd={() => { }}
                     onOpenAuth={handleAdoptClick}
+                    isLoggedIn={isLoggedIn}
+                    userName={userName}
+                    onOpenChatbot={handleOpenChatbot}
                   />
                 </div>
 
@@ -110,9 +141,11 @@ export default function App() {
                   <div className="w-full md:w-auto flex justify-start items-center my-auto z-20">
                     <div className="animate-heroStagger">
                       <Hero
-                        onInteractiveHoverStart={() => {}}
-                        onInteractiveHoverEnd={() => {}}
+                        onInteractiveHoverStart={() => { }}
+                        onInteractiveHoverEnd={() => { }}
                         onOpenAuth={handleAdoptClick}
+                        isLoggedIn={isLoggedIn}
+                        onOpenChatbot={handleOpenChatbot}
                       />
                     </div>
                   </div>
@@ -131,8 +164,8 @@ export default function App() {
                   {/* Bottom-Right Frosted Carousel Card */}
                   <div className="w-full md:w-auto flex justify-end items-end mt-auto z-20 ml-auto animate-cardSlideUp">
                     <CarouselCard
-                      onInteractiveHoverStart={() => {}}
-                      onInteractiveHoverEnd={() => {}}
+                      onInteractiveHoverStart={() => { }}
+                      onInteractiveHoverEnd={() => { }}
                     />
                   </div>
                 </div>
@@ -141,16 +174,18 @@ export default function App() {
               {/* Page 2 (Features Section with Pinned Sticky Horizontal Scroll) */}
               <div id="features" className="relative z-10 w-full">
                 <Features
-                  onInteractiveHoverStart={() => {}}
-                  onInteractiveHoverEnd={() => {}}
+                  onInteractiveHoverStart={() => { }}
+                  onInteractiveHoverEnd={() => { }}
                 />
               </div>
 
               {/* Footer Section */}
               <Footer
-                onInteractiveHoverStart={() => {}}
-                onInteractiveHoverEnd={() => {}}
+                onInteractiveHoverStart={() => { }}
+                onInteractiveHoverEnd={() => { }}
                 onOpenAuth={handleAdoptClick}
+                isLoggedIn={isLoggedIn}
+                onOpenChatbot={handleOpenChatbot}
               />
             </main>
 

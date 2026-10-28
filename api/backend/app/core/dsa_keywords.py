@@ -402,6 +402,6 @@ def contains_dsa_keyword(text: str) -> bool:
             if kw in normalized:
                 return True
         else:
-            if re.search(r"\b" + re.escape(kw) + r"\b", normalized):
+            if re.search(r"\b" + re.escape(kw) + r"(?:s|es)?\b", normalized):
                 return True
     return False

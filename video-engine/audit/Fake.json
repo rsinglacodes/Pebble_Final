@@ -1,0 +1,8 @@
+{
+  "scene": "Fake",
+  "issues": [
+    "text '1' overlaps '2'",
+    "text 'front' overlaps 'back'"
+  ],
+  "texts": 15
+}

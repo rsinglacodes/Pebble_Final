@@ -1,0 +1,10 @@
+openai
+python-dotenv
+pydantic>=2
+azure-cognitiveservices-speech
+manim
+pytest
+fastapi
+uvicorn
+azure-storage-blob
+httpx

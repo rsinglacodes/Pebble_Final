@@ -4,7 +4,9 @@ import { ChatMessage, VisualStep } from '../../lib/chat.ts';
 import { getSavedSession } from '../../lib/auth.ts';
 import { ChevronRight, Play, CheckCircle2 } from 'lucide-react';
 import { WatchVideoButton } from './WatchVideoButton.tsx';
-import { ScriptBlock } from './ScriptBlock.tsx';
+import { SolutionCodeCard } from './SolutionCodeCard.tsx';
+
+const FENCED_CODE_REGEX = /```[^\n`]*\r?\n[\s\S]*?```/;
 
 interface MessageProps {
   message: ChatMessage;
@@ -37,6 +39,23 @@ export const Message: React.FC<MessageProps> = ({ message, isStreaming = false, 
   }
 
   // Assistant message
+  const hasSolutionCard = Boolean(
+    message.meta?.problem?.id && message.meta?.solution?.code
+  );
+
+  let beforeCode = '';
+  let afterCode = '';
+  let hasFencedCode = false;
+
+  if (hasSolutionCard && message.content) {
+    const match = FENCED_CODE_REGEX.exec(message.content);
+    if (match && typeof match.index === 'number') {
+      hasFencedCode = true;
+      beforeCode = message.content.slice(0, match.index).trim();
+      afterCode = message.content.slice(match.index + match[0].length).trim();
+    }
+  }
+
   return (
     <div className="w-full flex justify-start items-start gap-3 my-4 select-text">
       {/* Pebble Gradient Logo Avatar */}
@@ -54,28 +73,41 @@ export const Message: React.FC<MessageProps> = ({ message, isStreaming = false, 
 
       {/* Assistant Content Box */}
       <div className="flex-1 max-w-[92%] sm:max-w-[85%] flex flex-col gap-3">
-        <div className="relative">
-          {message.content ? (
-            <MarkdownRenderer content={message.content} />
-          ) : isStreaming ? (
-            <div className="flex items-center gap-1.5 text-xs text-[#8A8A90] py-1 select-none">
-              <span className="w-2 h-2 rounded-full bg-[#6C5CFF] animate-ping" />
-              <span>Thinking & breaking down steps...</span>
-            </div>
-          ) : null}
+            <div className="relative">
+              {hasSolutionCard ? (
+                hasFencedCode ? (
+                  <>
+                    {beforeCode ? <MarkdownRenderer content={beforeCode} /> : null}
+                    <SolutionCodeCard meta={message.meta} />
+                    {afterCode ? <MarkdownRenderer content={afterCode} /> : null}
+                  </>
+                ) : (
+                  <>
+                    {message.content ? <MarkdownRenderer content={message.content} /> : null}
+                    <SolutionCodeCard meta={message.meta} />
+                  </>
+                )
+              ) : message.content ? (
+                <MarkdownRenderer content={message.content} />
+              ) : isStreaming ? (
+                <div className="flex items-center gap-1.5 text-xs text-[#8A8A90] py-1 select-none">
+                  <span className="w-2 h-2 rounded-full bg-[#6C5CFF] animate-ping" />
+                  <span>Thinking & breaking down steps...</span>
+                </div>
+              ) : null}
 
-          {/* Glowing cursor bar during streaming */}
-          {isStreaming && message.content && (
-            <span className="inline-block w-1.5 h-4 ml-1 bg-gradient-to-b from-[#6C5CFF] to-[#3CC8FF] rounded-full animate-pulse align-middle" />
-          )}
-        </div>
+              {/* Glowing cursor bar during streaming */}
+              {isStreaming && message.content && (
+                <span className="inline-block w-1.5 h-4 ml-1 bg-gradient-to-b from-[#6C5CFF] to-[#3CC8FF] rounded-full animate-pulse align-middle" />
+              )}
+            </div>
 
         {/* Visual Step Walkthrough Box */}
         {message.visualSteps && message.visualSteps.length > 0 && (
           <VisualStepsCard steps={message.visualSteps} />
         )}
 
-        {/* Video Solution & Script when video-capable */}
+        {/* Video Solution when video-capable */}
         {message.meta?.can_generate && message.meta?.video_request && (
           <div className="flex flex-col gap-1 mt-1">
             <WatchVideoButton
@@ -84,9 +116,6 @@ export const Message: React.FC<MessageProps> = ({ message, isStreaming = false, 
               initialJobId={message.meta.video_job_id}
               onMetaUpdate={(updates) => onUpdateMeta?.(message.id, updates)}
             />
-            {message.meta.video_payload && (
-              <ScriptBlock payload={message.meta.video_payload} />
-            )}
           </div>
         )}
       </div>

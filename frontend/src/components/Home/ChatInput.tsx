@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowUp, Square, Code, Sparkles } from 'lucide-react';
+import { ArrowUp, Square } from 'lucide-react';
 
 interface ChatInputProps {
   onSend: (text: string) => void;
@@ -74,68 +74,36 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         </div>
 
         {/* Bottom Actions Row */}
-        <div className="w-full flex items-center justify-between pt-1 border-t border-black/[0.04]">
-          {/* Left Actions: Code Snippet inserter */}
-          <div className="flex items-center gap-1.5">
+        <div className="w-full flex items-center justify-end pt-1 border-t border-black/[0.04]">
+          {isStreaming ? (
             <button
               type="button"
-              onClick={handleInsertSnippet}
+              onClick={onStop}
               data-cursor="button"
-              title="Insert code snippet template"
-              className="px-2.5 py-1.5 rounded-full text-xs font-medium text-[#6B6B73] hover:text-[#111113] hover:bg-black/[0.05] transition-colors flex items-center gap-1.5 cursor-pointer"
+              title="Stop response"
+              className="w-8 h-8 rounded-full bg-[#111113] text-white hover:bg-[#2A2A30] flex items-center justify-center transition-all cursor-pointer shadow-xs active:scale-95"
             >
-              <Code className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Snippet</span>
+              <Square className="w-3.5 h-3.5 fill-current" />
             </button>
-          </div>
-
-          {/* Right Actions: Deep Think / Visual Mode toggle & Send / Stop Button */}
-          <div className="flex items-center gap-2">
+          ) : (
             <button
               type="button"
-              onClick={onToggleDeepThink}
+              onClick={handleSend}
+              disabled={!input.trim()}
               data-cursor="button"
-              title="Toggle step-by-step visual mode"
-              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer ${
-                deepThink
-                  ? 'bg-gradient-to-r from-[#6C5CFF]/15 to-[#3CC8FF]/15 text-[#5241E0] border border-[#6C5CFF]/25 shadow-2xs'
-                  : 'text-[#6B6B73] hover:text-[#111113] hover:bg-black/[0.05]'
+              title="Send message"
+              className={`w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-xs active:scale-95 ${
+                input.trim()
+                  ? 'text-white hover:scale-105'
+                  : 'text-white/40 cursor-not-allowed opacity-40'
               }`}
+              style={{
+                background: 'linear-gradient(135deg, #B33CF0 0%, #6C5CFF 50%, #3CC8FF 100%)',
+              }}
             >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Visual mode</span>
+              <ArrowUp className="w-4 h-4 stroke-[2.5]" />
             </button>
-
-            {isStreaming ? (
-              <button
-                type="button"
-                onClick={onStop}
-                data-cursor="button"
-                title="Stop response"
-                className="w-8 h-8 rounded-full bg-[#111113] text-white hover:bg-[#2A2A30] flex items-center justify-center transition-all cursor-pointer shadow-xs active:scale-95"
-              >
-                <Square className="w-3.5 h-3.5 fill-current" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleSend}
-                disabled={!input.trim()}
-                data-cursor="button"
-                title="Send message"
-                className={`w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-xs active:scale-95 ${
-                  input.trim()
-                    ? 'text-white hover:scale-105'
-                    : 'text-white/40 cursor-not-allowed opacity-40'
-                }`}
-                style={{
-                  background: 'linear-gradient(135deg, #B33CF0 0%, #6C5CFF 50%, #3CC8FF 100%)',
-                }}
-              >
-                <ArrowUp className="w-4 h-4 stroke-[2.5]" />
-              </button>
-            )}
-          </div>
+          )}
         </div>
       </div>
 

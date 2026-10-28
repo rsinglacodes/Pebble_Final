@@ -1,0 +1,10 @@
+.env
+.venv/
+workspace/
+__pycache__/
+*.mp4
+media/
+*.pyc
+.pytest_cache/
+
+.env

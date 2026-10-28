@@ -1,0 +1,37 @@
+VISUAL KIT (pre-built and already available in your script; never import or redefine anything from it)
+
+STATES (use these strings everywhere): "default" (calm blue-grey), "active" (amber: what is being looked at right now), "good" (green: found / done / correct), "bad" (red: rejected / error / bug), "dim" (faded: finished or ignored).
+CONSTANTS: STAGE, LEFT_LANE, RIGHT_LANE (positions); T_FAST=0.4, T_STEP=0.7, T_SLOW=1.1 (seconds, for run_time of your own animations); colors C_TEXT, C_MUTED, C_ACCENT, C_ACTIVE, C_GOOD, C_BAD, C_BG (only for raw Manim objects).
+
+SCENE HELPERS (call with self; each plays its own animation):
+  show_title(self, text)                       title at the top with an accent underline; one per scene, nothing else goes at the top
+  title_card(self, title, subtitle=None)       opening card, scene 1 only
+  set_caption(self, text)                      one-line caption at the bottom, crossfades the previous caption; at most 70 characters, plain words, no code
+  show_legend(self)                            small colour legend, bottom right (scene 1 only)
+  step_tag(self, n, total)                     "Step n of total" tag, top right
+  result_cards(self, answer, time, space)      closing scene: three cards (Answer, Time, Space), strings such as "[0, 1]", "O(n)", "O(n)"
+  compare_panels(self, left_title, right_title, left_state="bad", right_state="good") -> (left_at, right_at)   two framed half-stage panels; build structures with at=left_at / at=right_at, max_width=5.4
+
+STRUCTURES (each is a Mobject, add it with self.play(x.intro()) or self.add(x)). Common constructor args: at=STAGE, max_width=None, max_height=None (auto-fit by default). Common method: .intro(fast=False) -> Animation (fast=True fades in over 0.3s; use fast=True whenever a structure that already appeared in an earlier scene appears again, so scenes feel continuous and keep the same size and position).
+  ArrayViz(values, label=None, show_index=True)
+      .set_state(i_or_list, state)  .set_all(state)  .set_value(i, v)  .swap(i, j)
+      .pointer(name, i, state="active", level=0) -> Pointer      (sits under cell i; give pointers that can share a cell different levels 0, 1, 2)
+           Pointer: .intro()  .to(i)  .hide()          (all return an Animation)
+      .window(l, r, state="active") -> Window mobject (play FadeIn(win));  .move_window(win, l, r) -> Animation
+  MapViz(title, show_values=True, max_rows=6)       (hash map; show_values=False makes it a set)
+      .put(k, v=None)  .hit(k)  .miss(label)  .remove(k)  .set_state(k, state)
+  StackViz(title, items=(), capacity=6)     .push(v)  .pop()  .peek()
+  QueueViz(title, items=(), deque=False)    .enqueue(v)  .dequeue()      (deque only: .push_front(v)  .pop_back())
+  LinkedListViz(values)   .set_state(i, state)  .pointer(name, i, state="active", level=0)  .relink(i, j) (arrow from node i to node j; j=None means null)  .remove(i)  .insert_after(i, v)
+  TreeViz(level_order)    LeetCode level-order list, None for a missing child, e.g. [3, 9, 20, None, None, 15, 7]
+      .set_state(i, state)  .set_edge(i, j, state) (parent i, child j)  .annotate(i, text, state="default")
+  GraphViz(labels, edges, directed=False, layout="circle", positions=None)     edges are (a, b) or (a, b, weight)
+      .set_node(label, state)  .set_edge(a, b, state)  .tag(label, text) (small text under a node such as a distance; calling again replaces it)
+  GridViz(rows, row_labels=None, col_labels=None)     rows is a list of lists
+      .set_state((r, c) or a list of them, state)  .set_value((r, c), v)  .link(src, dst) (dependency arrow)  .unlink()
+  BarsViz(values)         .set_state(i_or_list, state)  .swap(i, j)
+  HeapViz(values, mode="min")    tree and array shown together      .set_state(i, state)  .swap(i, j)
+  StatePanel(items: dict, side="bottom")    variables as chips like "need = 7"; side is "bottom" (a row), "left" or "right" (a column)
+      .intro()  .update(name, value, state="active")  .set_state(name, state)
+
+Every method returns an Animation: play one with self.play(...) or several together with self.play(a, b, c). Kit animations carry their own run_time; pass run_time= to self.play only to override.

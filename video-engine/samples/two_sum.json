@@ -1,0 +1,9 @@
+{
+  "question": {"id": 1, "slug": "two-sum", "title": "Two Sum"},
+  "solution": {
+    "code": "class Solution:\n    def twoSum(self, nums, target):\n        seen = {}\n        for i, value in enumerate(nums):\n            need = target - value\n            if need in seen:\n                return [seen[need], i]\n            seen[value] = i\n        return []\n",
+    "programming_language": "python",
+    "validated": true
+  },
+  "preferences": {"explanation_language": "English", "explanation_style": "beginner_friendly"}
+}

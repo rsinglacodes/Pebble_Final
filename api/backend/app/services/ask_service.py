@@ -215,6 +215,20 @@ class AskService:
                     avail_languages = resolve_result.available_languages
 
             if prob_resolved:
+                v_req = CreateVideoJobRequest(
+                    problem_id=prob_resolved.id,
+                    user_code=code_content,
+                    programming_language=programming_language,
+                    title=prob_resolved.title,
+                )
+                v_pl = PayloadBuilder.build_payload(
+                    problem_id=prob_resolved.id,
+                    slug=prob_resolved.slug,
+                    title=prob_resolved.title,
+                    code=code_content,
+                    programming_language=programming_language,
+                    validated=False,
+                )
                 response = AskResponse(
                     status="found",
                     message=f"Found problem '{prob_resolved.title}' for your submitted code.",
@@ -222,16 +236,32 @@ class AskService:
                     solution=user_solution,
                     available_languages=avail_languages,
                     can_generate=True,
+                    video_request=v_req,
+                    video_payload=v_pl,
                 )
                 self._safe_save_history(db, user, text, response.status, prob_resolved.id, programming_language)
                 return response
             else:
+                c_text = (remaining_text.strip() if remaining_text and remaining_text.strip() else text)[:300]
+                v_req = CreateVideoJobRequest(
+                    text=c_text,
+                    user_code=code_content,
+                    programming_language=programming_language,
+                )
+                v_pl = PayloadBuilder.build_payload(
+                    text=c_text,
+                    code=code_content,
+                    programming_language=programming_language,
+                    validated=False,
+                )
                 response = AskResponse(
                     status="concept",
                     message=CONCEPT_MESSAGE,
                     solution=user_solution,
                     available_languages=[],
                     can_generate=True,
+                    video_request=v_req,
+                    video_payload=v_pl,
                 )
                 self._safe_save_history(db, user, text, response.status, None, programming_language)
                 return response
@@ -240,53 +270,36 @@ class AskService:
         query_candidate = self._extract_problem_query(text)
         query = query_candidate or text.strip()
 
-        resolve_result = self.problem_service.resolve_problem(
-            db=db, q=query, language=programming_language
-        )
+        # Check if query matches an exact slug directly (e.g. "two sum" -> "two-sum")
+        resolve_result = None
+        if " " in query:
+            slug_candidate = re.sub(r"\s+", "-", query.strip()).lower()
+            slug_res = self.problem_service.resolve_problem(
+                db=db, q=slug_candidate, language=programming_language
+            )
+            if slug_res.resolved and slug_res.candidates is None:
+                resolve_result = slug_res
 
-        # Case A: Problem Resolved
-        if resolve_result.resolved and resolve_result.problem:
-            prob_info = ProblemInfo(
-                id=resolve_result.problem.id,
-                slug=resolve_result.problem.slug,
-                title=resolve_result.problem.title,
-                source_url=resolve_result.problem.source_url,
+        if resolve_result is None:
+            resolve_result = self.problem_service.resolve_problem(
+                db=db, q=query, language=programming_language
             )
 
-            if resolve_result.solution:
-                # found: problem resolved and a stored solution exists for the chosen language
-                response = AskResponse(
-                    status="found",
-                    message=f"Found verified {self._format_language(resolve_result.solution.language)} solution for '{resolve_result.problem.title}'.",
-                    problem=prob_info,
-                    solution=SolutionInfo(
-                        language=resolve_result.solution.language,
-                        code=resolve_result.solution.code,
-                        validated=True,
-                    ),
-                    available_languages=resolve_result.available_languages,
-                    can_generate=True,
-                )
-            else:
-                # no_solution: problem resolved but not in that language
-                lang_disp = self._format_language(programming_language)
-                response = AskResponse(
-                    status="no_solution",
-                    message=f"No stored {lang_disp} solution for this problem. Pebble will generate one with the video.",
-                    problem=prob_info,
-                    solution=None,
-                    available_languages=resolve_result.available_languages,
-                    can_generate=True,
-                )
-
-            self._safe_save_history(db, user, text, response.status, prob_info.id, programming_language)
-            return response
-
-        # 4. LLM Intent Classifier (if enabled)
         settings = get_settings()
-        if (settings.INTENT_PROVIDER or "off").strip().lower() != "off":
+        intent_enabled = (settings.INTENT_PROVIDER or "off").strip().lower() != "off"
+
+        # If problem resolved via fuzzy trigram match (candidates is a list) and INTENT_PROVIDER != "off",
+        # do NOT accept it yet: call the intent classifier first.
+        if (
+            resolve_result.resolved
+            and resolve_result.problem
+            and resolve_result.candidates is not None
+            and intent_enabled
+        ):
             classification = self.intent_service.classify(text)
             if classification is not None:
+                effective_lang = classification.programming_language or programming_language
+
                 if classification.intent in ("chitchat", "off_topic"):
                     status_str = "chitchat" if classification.intent == "chitchat" else "out_of_scope"
                     response = AskResponse(
@@ -296,18 +309,28 @@ class AskService:
                         can_generate=False,
                     )
                     if status_str != "out_of_scope":
-                        self._safe_save_history(db, user, text, status_str, None, programming_language)
+                        self._safe_save_history(db, user, text, status_str, None, effective_lang)
                     return response
 
-                if classification.intent == "dsa_problem" and classification.clean_title:
+                if classification.intent == "dsa_problem":
+                    clean_title = classification.clean_title or query
                     clean_res = self.problem_service.resolve_problem(
-                        db=db, q=classification.clean_title, language=programming_language
+                        db=db, q=clean_title, language=effective_lang
                     )
-                    if not clean_res.resolved and " " in classification.clean_title:
+                    if not clean_res.resolved and " " in clean_title:
                         clean_res = self.problem_service.resolve_problem(
-                            db=db, q=classification.clean_title.replace(" ", "-"), language=programming_language
+                            db=db, q=clean_title.replace(" ", "-"), language=effective_lang
                         )
+
+                    # Accept only if it resolves via an exact match or the top candidate score >= 0.6
+                    accepted = False
                     if clean_res.resolved and clean_res.problem:
+                        if clean_res.candidates is None:
+                            accepted = True
+                        elif len(clean_res.candidates) > 0 and clean_res.candidates[0].score >= 0.6:
+                            accepted = True
+
+                    if accepted:
                         prob_info = ProblemInfo(
                             id=clean_res.problem.id,
                             slug=clean_res.problem.slug,
@@ -316,7 +339,7 @@ class AskService:
                         )
                         v_req = CreateVideoJobRequest(
                             problem_id=clean_res.problem.id,
-                            programming_language=programming_language,
+                            programming_language=effective_lang,
                             title=clean_res.problem.title,
                         )
                         if clean_res.solution:
@@ -325,7 +348,7 @@ class AskService:
                                 slug=clean_res.problem.slug,
                                 title=clean_res.problem.title,
                                 code=clean_res.solution.code,
-                                programming_language=programming_language,
+                                programming_language=effective_lang,
                                 validated=clean_res.solution.validated,
                             )
                             response = AskResponse(
@@ -347,11 +370,11 @@ class AskService:
                                 problem_id=clean_res.problem.id,
                                 slug=clean_res.problem.slug,
                                 title=clean_res.problem.title,
-                                programming_language=programming_language,
+                                programming_language=effective_lang,
                             )
                             response = AskResponse(
                                 status="no_solution",
-                                message=f"No stored {self._format_language(programming_language)} solution for this problem. Pebble will generate one with the video.",
+                                message=f"No stored {self._format_language(effective_lang)} solution for this problem. Pebble will generate one with the video.",
                                 problem=prob_info,
                                 solution=None,
                                 available_languages=clean_res.available_languages,
@@ -359,19 +382,38 @@ class AskService:
                                 video_request=v_req,
                                 video_payload=v_pl,
                             )
-                        self._safe_save_history(db, user, text, response.status, prob_info.id, programming_language)
+                        self._safe_save_history(db, user, text, response.status, prob_info.id, effective_lang)
+                        return response
+                    else:
+                        c_text = (classification.clean_title or text)[:300]
+                        v_req = CreateVideoJobRequest(
+                            text=c_text,
+                            programming_language=effective_lang,
+                        )
+                        v_pl = PayloadBuilder.build_payload(
+                            text=c_text,
+                            programming_language=effective_lang,
+                        )
+                        response = AskResponse(
+                            status="concept",
+                            message=classification.reply or CONCEPT_MESSAGE,
+                            available_languages=[],
+                            can_generate=True,
+                            video_request=v_req,
+                            video_payload=v_pl,
+                        )
+                        self._safe_save_history(db, user, text, response.status, None, effective_lang)
                         return response
 
-                # algorithm_concept or unresolved dsa_problem
-                if classification.intent in ("algorithm_concept", "dsa_problem"):
-                    c_title = (classification.clean_title or text)[:300]
+                if classification.intent == "algorithm_concept":
+                    c_text = (classification.clean_title or text)[:300]
                     v_req = CreateVideoJobRequest(
-                        text=c_title,
-                        programming_language=programming_language,
+                        text=c_text,
+                        programming_language=effective_lang,
                     )
                     v_pl = PayloadBuilder.build_payload(
-                        text=c_title,
-                        programming_language=programming_language,
+                        text=c_text,
+                        programming_language=effective_lang,
                     )
                     response = AskResponse(
                         status="concept",
@@ -381,7 +423,176 @@ class AskService:
                         video_request=v_req,
                         video_payload=v_pl,
                     )
-                    self._safe_save_history(db, user, text, response.status, None, programming_language)
+                    self._safe_save_history(db, user, text, response.status, None, effective_lang)
+                    return response
+
+        # Case A: Problem Resolved (exact matches, classifier failure, or INTENT_PROVIDER == "off")
+        if resolve_result.resolved and resolve_result.problem:
+            prob_info = ProblemInfo(
+                id=resolve_result.problem.id,
+                slug=resolve_result.problem.slug,
+                title=resolve_result.problem.title,
+                source_url=resolve_result.problem.source_url,
+            )
+
+            if resolve_result.solution:
+                # found: problem resolved and a stored solution exists for the chosen language
+                v_req = CreateVideoJobRequest(
+                    problem_id=resolve_result.problem.id,
+                    programming_language=programming_language,
+                    title=resolve_result.problem.title,
+                )
+                v_pl = PayloadBuilder.build_payload(
+                    problem_id=resolve_result.problem.id,
+                    slug=resolve_result.problem.slug,
+                    title=resolve_result.problem.title,
+                    code=resolve_result.solution.code,
+                    programming_language=programming_language,
+                    validated=resolve_result.solution.validated,
+                )
+                response = AskResponse(
+                    status="found",
+                    message=f"Found verified {self._format_language(resolve_result.solution.language)} solution for '{resolve_result.problem.title}'.",
+                    problem=prob_info,
+                    solution=SolutionInfo(
+                        language=resolve_result.solution.language,
+                        code=resolve_result.solution.code,
+                        validated=True,
+                    ),
+                    available_languages=resolve_result.available_languages,
+                    can_generate=True,
+                    video_request=v_req,
+                    video_payload=v_pl,
+                )
+            else:
+                # no_solution: problem resolved but not in that language
+                lang_disp = self._format_language(programming_language)
+                v_req = CreateVideoJobRequest(
+                    problem_id=resolve_result.problem.id,
+                    programming_language=programming_language,
+                    title=resolve_result.problem.title,
+                )
+                v_pl = PayloadBuilder.build_payload(
+                    problem_id=resolve_result.problem.id,
+                    slug=resolve_result.problem.slug,
+                    title=resolve_result.problem.title,
+                    programming_language=programming_language,
+                )
+                response = AskResponse(
+                    status="no_solution",
+                    message=f"No stored {lang_disp} solution for this problem. Pebble will generate one with the video.",
+                    problem=prob_info,
+                    solution=None,
+                    available_languages=resolve_result.available_languages,
+                    can_generate=True,
+                    video_request=v_req,
+                    video_payload=v_pl,
+                )
+
+            self._safe_save_history(db, user, text, response.status, prob_info.id, programming_language)
+            return response
+
+        # 4. LLM Intent Classifier (if enabled)
+        if intent_enabled:
+            classification = self.intent_service.classify(text)
+            if classification is not None:
+                effective_lang = classification.programming_language or programming_language
+
+                if classification.intent in ("chitchat", "off_topic"):
+                    status_str = "chitchat" if classification.intent == "chitchat" else "out_of_scope"
+                    response = AskResponse(
+                        status=status_str,
+                        message=classification.reply,
+                        available_languages=[],
+                        can_generate=False,
+                    )
+                    if status_str != "out_of_scope":
+                        self._safe_save_history(db, user, text, status_str, None, effective_lang)
+                    return response
+
+                if classification.intent == "dsa_problem" and classification.clean_title:
+                    clean_res = self.problem_service.resolve_problem(
+                        db=db, q=classification.clean_title, language=effective_lang
+                    )
+                    if not clean_res.resolved and " " in classification.clean_title:
+                        clean_res = self.problem_service.resolve_problem(
+                            db=db, q=classification.clean_title.replace(" ", "-"), language=effective_lang
+                        )
+                    if clean_res.resolved and clean_res.problem:
+                        prob_info = ProblemInfo(
+                            id=clean_res.problem.id,
+                            slug=clean_res.problem.slug,
+                            title=clean_res.problem.title,
+                            source_url=clean_res.problem.source_url,
+                        )
+                        v_req = CreateVideoJobRequest(
+                            problem_id=clean_res.problem.id,
+                            programming_language=effective_lang,
+                            title=clean_res.problem.title,
+                        )
+                        if clean_res.solution:
+                            v_pl = PayloadBuilder.build_payload(
+                                problem_id=clean_res.problem.id,
+                                slug=clean_res.problem.slug,
+                                title=clean_res.problem.title,
+                                code=clean_res.solution.code,
+                                programming_language=effective_lang,
+                                validated=clean_res.solution.validated,
+                            )
+                            response = AskResponse(
+                                status="found",
+                                message=f"Found verified {self._format_language(clean_res.solution.language)} solution for '{clean_res.problem.title}'.",
+                                problem=prob_info,
+                                solution=SolutionInfo(
+                                    language=clean_res.solution.language,
+                                    code=clean_res.solution.code,
+                                    validated=True,
+                                ),
+                                available_languages=clean_res.available_languages,
+                                can_generate=True,
+                                video_request=v_req,
+                                video_payload=v_pl,
+                            )
+                        else:
+                            v_pl = PayloadBuilder.build_payload(
+                                problem_id=clean_res.problem.id,
+                                slug=clean_res.problem.slug,
+                                title=clean_res.problem.title,
+                                programming_language=effective_lang,
+                            )
+                            response = AskResponse(
+                                status="no_solution",
+                                message=f"No stored {self._format_language(effective_lang)} solution for this problem. Pebble will generate one with the video.",
+                                problem=prob_info,
+                                solution=None,
+                                available_languages=clean_res.available_languages,
+                                can_generate=True,
+                                video_request=v_req,
+                                video_payload=v_pl,
+                            )
+                        self._safe_save_history(db, user, text, response.status, prob_info.id, effective_lang)
+                        return response
+
+                # algorithm_concept or unresolved dsa_problem
+                if classification.intent in ("algorithm_concept", "dsa_problem"):
+                    c_title = (classification.clean_title or text)[:300]
+                    v_req = CreateVideoJobRequest(
+                        text=c_title,
+                        programming_language=effective_lang,
+                    )
+                    v_pl = PayloadBuilder.build_payload(
+                        text=c_title,
+                        programming_language=effective_lang,
+                    )
+                    response = AskResponse(
+                        status="concept",
+                        message=classification.reply or CONCEPT_MESSAGE,
+                        available_languages=[],
+                        can_generate=True,
+                        video_request=v_req,
+                        video_payload=v_pl,
+                    )
+                    self._safe_save_history(db, user, text, response.status, None, effective_lang)
                     return response
 
         # Case B: Problem NOT Resolved
@@ -420,11 +631,22 @@ class AskService:
             return response
 
         # concept: text resolves to no problem but passes the keyword gate
+        c_text = text[:300]
+        v_req = CreateVideoJobRequest(
+            text=c_text,
+            programming_language=programming_language,
+        )
+        v_pl = PayloadBuilder.build_payload(
+            text=c_text,
+            programming_language=programming_language,
+        )
         response = AskResponse(
             status="concept",
             message=CONCEPT_MESSAGE,
             available_languages=[],
             can_generate=True,
+            video_request=v_req,
+            video_payload=v_pl,
         )
         self._safe_save_history(db, user, text, response.status, None, programming_language)
         return response

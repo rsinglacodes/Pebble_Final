@@ -90,3 +90,14 @@ def client(request):
         yield test_client
     app.dependency_overrides.clear()
     limiter.reset()
+
+
+@pytest.fixture(autouse=True)
+def force_test_settings(monkeypatch):
+    """Force VIDEO_PROVIDER=mock and INTENT_PROVIDER=off to decouple tests from local .env."""
+    monkeypatch.setenv("VIDEO_PROVIDER", "mock")
+    monkeypatch.setenv("INTENT_PROVIDER", "off")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+

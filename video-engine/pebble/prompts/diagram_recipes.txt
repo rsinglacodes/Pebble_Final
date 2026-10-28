@@ -1,0 +1,183 @@
+CODE VISUALIZATION VOCABULARY (in addition to the base set):
+You MAY additionally use: Rectangle, RoundedRectangle, Square, VGroup, VDict,
+Brace, BraceBetweenPoints, SurroundingRectangle, Underline, Cross, CurvedArrow,
+CurvedDoubleArrow, Indicate, Circumscribe, Flash, ApplyWave, LaggedStart,
+ValueTracker, always_redraw (only these — no image/latex-file rendering).
+
+UNIVERSAL MEMORY-MODEL RULES (apply to every scene):
+- Code/algorithm explanation: LEFT lane = visualization (data structure);
+  RIGHT lane = pseudocode lines as a right-aligned VGroup of Text()s, with a
+  moveable SurroundingRectangle (highlight) that jumps to the executing line.
+- Variable values are Text()/MathTex() placed INSIDE boxes — never floating.
+- Every pointer is an Arrow from the pointer's anchor to the referenced
+  object; when the pointer moves (assignment/swap), FadeOut the old Arrow and
+  Create the new one (Arrows do not animate pivot changes well).
+- Every index used (i, j, mid, top, front, rear) is rendered as a labelled
+  Arrow or Triangle under/above the exact cell it points to.
+- Swap animation: highlight both cells (SurroundingRectangle), show the two
+  values Transform into each other's cells with an arc (curved Transform),
+  then keep both values in their final cells.
+
+DIAGRAM RECIPES (MANDATORY SPECIFIC STYLES):
+
+1. ARRAY / LIST / STRING:
+   One horizontal row of equal 1x1 squares inside a VGroup; value inside each
+   cell, index label (0..n-1) ABOVE each cell as Text().
+   - Traversal: one index-Arrow moves cell-to-cell as each cell is Indicate()d.
+   - Insert: target cells shift(RIGHT*cellW) with the value FadeIn()ing into
+     the gap; if the array overflows, show two arrays (old row FadeOut →
+     new 2n-sized row FadeIn) — the classic dynamic-array resize.
+   - Out-of-bounds access: Flash() red on the cell space beyond the array +
+     a red Cross() over the index-Arrow.
+
+2. STACK (LIFO):
+   a vertical column of stacked rectangles (height 0.6 each), "Bottom"
+   label under the lowest cell, "Top" pointer = a fixed Arrow that slides
+   UP/DOWN to always point at the top cell.
+   - Push: new Rectangle slides in from OFF-SCREEN ABOVE down into place,
+     Top arrow moves up.
+   - Pop: top Rectangle slides up out and FadeOut, value Text of the popped
+     item moves to the side ("returned value"), Top arrow moves down.
+   - Peek: Circumscribe around the top cell (no value removal).
+   - Stack overflow: attempt push at fixed capacity → Flash red + "Overflow"
+     Text; underflow on pop from empty stack likewise.
+
+3. QUEUE (FIFO):
+   horizontal row of cells with "FRONT" Arrow on the left-most occupied cell
+   and "REAR" Arrow on the right-most.
+   - Enqueue: value slides in from OFF-SCREEN RIGHT behind REAR, REAR moves.
+   - Dequeue: FRONT cell FadeOut, remaining cells shift LEFT one slot, FRONT
+     and REAR arrows update.
+   - Circular queue: cells arranged in a Circle with two pointer Arrows;
+     wrap-around is shown by the pointer rotating past the last cell to the
+     first, plus the "(i+j) % n" MathTex displayed while it happens.
+
+4. LINKED LIST:
+   separate nodes spaced horizontally; each node = paired rectangle
+   [data | next] drawn as two 0.8x0.6/0.5x0.6 rectangles side-by-side
+   (Divider via a small Line between them), "head" Arrow labelled
+   "head"/"curr"/"prev"/"tmp" Points at its node.
+   - Traversal: curr Arrow hops node to node, old node drops opacity 0.4.
+   - Insert at position k: Indicate target, FadeOut the incoming Arrow,
+     insert new node in between, draw its two new Arrows, re-wire.
+   - Delete: SurroundingRectangle on node, its incoming and outgoing Arrows
+     FadeOut, a bridging Arrow connects prev → next directly, node fades.
+   - Doubly linked list: pairs of Arrows between nodes labelled next (above)
+     and prev (below)
+   - Detect cycle: one CurvedArrow from a later node back to an earlier node
+     plus "slow/fast pointers" — two Arrows moving at 1x and 2x speed.
+
+5. HEAP (MIN/MAX):
+   BOTH representations, always together: the complete binary tree on top
+   (Circle nodes connected by Lines) and its array form as a row of cells
+   below (parent at index i ↔ children 2i, 2i+1 written beside the tree as
+   MathTex).
+   - Insert: value Text placed at the new leaf, then per sift-up step the
+     parent–child pair highlights + the two values Transform-swap in BOTH
+     tree and array row simultaneously (keep the two views synchronized).
+   - Extract root: root value Text moves aside ("min/max popped"), last leaf
+     moves to root, then per sift-down step highlight the smaller/larger
+     child with SurroundingRectangle before each swap.
+
+6. BINARY SEARCH TREE:
+   Circles with integer labels inside; left/right child edges are Lines;
+   the "left < node < right" invariant shown once as MathTex at scene start.
+   - Insert: a hollow/dashed Circle (new node) drops from the top, stopping
+     at the first null child position; traversed path edges highlight green
+     step by step.
+   - Search: path nodes highlight green when in-range ("go left/right") and
+     red when rejected.
+   - Delete: draw the 3 cases explicitly (leaf → fade node; one child →
+     transform child edge to bridge; two children → Inorder successor node
+     then its value Transforms into the deleted node's
+     label).
+
+7. GRAPH (BFS / DFS / DIJKSTRA):
+   Circle vertices with labels inside; edges = Lines (undirected) or Arrows
+   (directed), weight Texts near edge midpoints for weighted graphs.
+   - Traversal state colors: unvisited = default, frontier (in queue/stack) =
+     YELLOW fill, visited = GREEN fill, current = Circumscribe.
+   - BFS: show the queue (per recipe 3) beside the graph; enqueuing draws the
+     vertex in, processing pops it; discovery edges highlight.
+   - DFS: show the recursion/call stack (recipe 2) beside the graph.
+   - Dijkstra/A*: in-progress distance labels (Text) under each vertex update
+     via Transform when a shorter path relaxes; the shortest-path edges end
+     highlighted thick/red.
+
+8. HASH TABLE / HASHMAP:
+   an indexed bucket row on top (cells labelled 0..m-1) and chains hanging
+   below (per recipe 4).
+   - Show the hash function box (MathTex e.g. h(k) = k % m) with an Arrow
+     from the key Text to the bucket cell it maps to.
+   - Collision: second entry chains off the same bucket (new node drawn
+     below the old one, connected by an Arrow labelled "next").
+   - Load factor/resize: show "load factor = n / m" as MathTex; on rehash,
+     FadeOut the whole old structure → FadeIn the doubled bucket row with
+     entries redistributed.
+
+9. MEMORY MODEL — STACK vs HEAP:
+   LEFT panel labelled "Stack", RIGHT panel labelled "Heap" (two
+   SurroundingRectangle frames).
+   - Local variables = small rectangles (name above, value inside) stacked
+     in the stack panel; objects (arrays/lists, those created with new/malloc)
+     = rectangles in the heap panel.
+   - A reference shows as an Arrow from the variable cell in the stack CROSSING
+     OVER to the object in the heap.
+   - Function call: new frame (SurroundingRectangle batched around its vars)
+     appears lower in stack; return: frame fades and any Arrows from it fade.
+   - Dangling pointer/null: the Arrow fades to a red Cross() at "null".
+
+10. SORTING (bubble/selection/insertion/merge/quick):
+   array row per recipe 1 (plus optional bar chart: per-value Rectangle
+   heights proportional to value on Axes-free VGroup).
+   - Compare step: two SurroundingRectangles on the compared pair.
+   - Swap: per universal rule (arc Transform between the two cells).
+   - Partition/pivot (quick): pivot cell set_fill(RED), smaller/larger value
+     movements shown as one-directional slide-arrows; region boundaries drawn with vertical dashed Lines that move.
+   - Merge sort: two sorted halves as rows, merged row below; per-merge step
+     picks one side's value and slides it down into the merge-sequence.
+   - Sorted-suffix marker: green SurroundingRectangle that grows left-to-right
+     (or a green underline) over sorted cells.
+
+11. DYNAMIC PROGRAMMING / DP TABLES:
+   dp Grid = rows of Rectangle cells (m x n VGroup) with row/col header
+   Texts; recurrence written once on top as MathTex.
+   - Cell fill order: cells get their values in dependency order, each cell
+     briefly Indicate()d as it's computed, with dependency Arrows from the
+     cells read.
+   - Base cases shaded (fill_opacity 0.2).
+   - Final answer cell: Circumscribe at scene end.
+
+12. RECURSION:
+   two synchronized views, always paired: call stack (recipe 2, one frame per
+   call showing arguments n and "return n*f(n-1)" as Text()) and the recursion
+   tree (circles labelled by call with arguments).
+   - Call: new frame slides down onto stack AND new circle is created lower in
+     tree connected via Line.
+   - Return: frame pops and its value Text travels (Transform) up the tree
+     edge into the caller's circle; base case: leaf Circumscribe green.
+
+13. TWO POINTERS / SLIDING WINDOW:
+   array row per recipe 1 with left and right index-Arrows.
+   - Two pointers move via arrow slides + the cells they scan highlighted.
+   - Window: a single SurroundingRectangle spanning the active cells of the
+     subarray; it shrinks (left++) or grows (right++) as code runs;
+     window sum/max Text updates via Transform.
+
+14. BIG-O / COMPLEXITY:
+   Axes with curves plotted (n, n log n, n^2, ...) — always include axis
+   labels and legend Text; runtime "operation counter" Text top-right that
+   increments (Transform between counter values) at every fundamental
+   operation shown in the main visualization.
+
+CONSISTENCY REQUIREMENTS:
+- Same structure type → same visual style across ALL scenes of the video.
+- Color semantics are fixed: YELLOW = current/active, GREEN = success/visited
+  or sorted, RED = error/comparison fail or pivot, BLUE = default, GREY =
+  done/ignored.
+- All cells for one structure are inside ONE VGroup so scale/align stays
+  consistent; label every structure once at its first appearance (Text title
+  at TOP edge).
+- No scene may show a structure without at least one mutating/changing
+  operation (insert, delete, traverse, compare, update...) — pure static
+  display is prohibited.

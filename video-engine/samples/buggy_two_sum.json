@@ -1,0 +1,9 @@
+{
+  "question": {"id": 1, "slug": "two-sum", "title": "Two Sum"},
+  "solution": {
+    "code": "class Solution:\n    def twoSum(self, nums, target):\n        seen = {}\n        for i in range(len(nums) - 1):\n            need = target - nums[i]\n            if need in seen:\n                return [seen[need], i]\n            seen[nums[i]] = i\n        return []\n",
+    "programming_language": "python",
+    "validated": false
+  },
+  "preferences": {"explanation_language": "English", "explanation_style": "beginner_friendly"}
+}

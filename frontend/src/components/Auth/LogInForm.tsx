@@ -4,6 +4,7 @@ import { PasswordField } from './PasswordField.tsx';
 import { GoogleButton } from './GoogleButton.tsx';
 import { authContent } from '../../content.ts';
 import { logIn, LogInParams } from '../../lib/auth.ts';
+import { ApiError } from '../../lib/api.ts';
 
 interface LogInFormProps {
   onSuccess: (name: string) => void;
@@ -32,7 +33,7 @@ export const LogInForm: React.FC<LogInFormProps> = ({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [genericError, setGenericError] = useState<string | null>(null);
+  const [serverError, setServerError] = useState<string | null>(null);
 
   const emailRef = useRef<HTMLInputElement | null>(null);
   const passwordRef = useRef<HTMLInputElement | null>(null);
@@ -56,7 +57,7 @@ export const LogInForm: React.FC<LogInFormProps> = ({
   const handleChange = (field: keyof typeof formData) => (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setFormData((prev) => ({ ...prev, [field]: val }));
-    setGenericError(null);
+    setServerError(null);
 
     if (touched[field]) {
       const err = validateField(field, val);
@@ -72,7 +73,7 @@ export const LogInForm: React.FC<LogInFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setGenericError(null);
+    setServerError(null);
 
     const newErrors: Record<string, string> = {};
     (['email', 'password'] as const).forEach((f) => {
@@ -105,7 +106,23 @@ export const LogInForm: React.FC<LogInFormProps> = ({
       const res = await logIn(params);
       onSuccess(res.user.name);
     } catch (err) {
-        setGenericError(err instanceof Error && err.message ? err.message : authContent.errors.genericFailure);
+      let msg = authContent.errors.genericFailure;
+      if (err instanceof ApiError) {
+        if (err.status === 401) {
+          msg = "Incorrect email or password.";
+        } else if (err.status === 429) {
+          msg = "Too many attempts. Please wait a minute.";
+        } else if (err.status === 0 || err.status >= 500) {
+          msg = "Can't reach the server. Please try again.";
+        } else {
+          msg = err.message || msg;
+        }
+      } else if (err instanceof TypeError || (err instanceof Error && /network|fetch|failed to fetch/i.test(err.message))) {
+        msg = "Can't reach the server. Please try again.";
+      } else if (err instanceof Error && err.message) {
+        msg = err.message;
+      }
+      setServerError(msg);
       onTriggerShake();
     } finally {
       setIsSubmitting(false);
@@ -114,6 +131,16 @@ export const LogInForm: React.FC<LogInFormProps> = ({
 
   return (
     <form onSubmit={handleSubmit} className="w-full flex flex-col gap-3" noValidate>
+      {/* Red Error Banner */}
+      {serverError && (
+        <div
+          role="alert"
+          className="w-full rounded-[12px] bg-[#D9485F]/10 border border-[#D9485F]/25 px-3.5 py-2.5 text-[13px] text-[#D9485F] leading-snug"
+        >
+          {serverError}
+        </div>
+      )}
+
       {/* 1. Email Address */}
       <TextField
         ref={emailRef}
@@ -158,13 +185,6 @@ export const LogInForm: React.FC<LogInFormProps> = ({
           </a>
         </div>
       </div>
-
-      {/* Generic Error Notice */}
-      {genericError && (
-        <p className="text-[12px] font-medium text-[#D9485F] text-center" aria-live="polite">
-          {genericError}
-        </p>
-      )}
 
       {/* 3. Primary Submit Button: Solid near-black #111113 */}
       <button

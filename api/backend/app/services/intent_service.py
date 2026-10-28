@@ -4,7 +4,7 @@ import json
 import logging
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.app.integrations.llm import LLMProvider, get_llm_provider
 
@@ -23,7 +23,8 @@ OUTPUT FORMAT: Return ONLY valid JSON with this exact schema (no markdown fences
 {
     "intent": "dsa_problem" | "algorithm_concept" | "chitchat" | "off_topic",
     "clean_title": "<extracted canonical title or null>",
-    "reply": "<short friendly response, 1-2 sentences>"
+    "reply": "<short friendly response, 1-2 sentences>",
+    "programming_language": "python" | "java" | "cpp" | null
 }
 
 For "clean_title":
@@ -35,6 +36,9 @@ For "reply":
 - For "chitchat": A warm, welcoming greeting offering help with DSA.
 - For "off_topic": A polite explanation that Pebble specializes in Data Structures and Algorithms.
 - For "dsa_problem" / "algorithm_concept": A brief confirmation that Pebble can help explain or visualize it.
+
+For "programming_language":
+- Set it ONLY if the user explicitly names a language (for example "in cpp", "in C++", "java version"); otherwise null.
 """
 
 
@@ -44,8 +48,23 @@ class IntentClassification(BaseModel):
     intent: Literal["dsa_problem", "algorithm_concept", "chitchat", "off_topic"]
     clean_title: Optional[str] = None
     reply: str = Field(..., min_length=1)
+    programming_language: Optional[Literal["python", "java", "cpp"]] = None
 
     model_config = ConfigDict(extra="ignore")
+
+    @field_validator("programming_language", mode="before")
+    @classmethod
+    def normalize_language(cls, v: Optional[str]) -> Optional[str]:
+        if not v:
+            return None
+        clean = str(v).lower().strip()
+        if clean in ("c++", "cpp"):
+            return "cpp"
+        if clean in ("python", "py"):
+            return "python"
+        if clean == "java":
+            return "java"
+        return clean
 
 
 class IntentService:

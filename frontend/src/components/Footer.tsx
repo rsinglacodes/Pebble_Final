@@ -6,13 +6,19 @@ interface FooterProps {
   onInteractiveHoverStart?: (label?: string) => void;
   onInteractiveHoverEnd?: () => void;
   onOpenAuth?: () => void;
+  isLoggedIn?: boolean;
+  onOpenChatbot?: () => void;
 }
 
 export const Footer: React.FC<FooterProps> = ({
   onInteractiveHoverStart,
   onInteractiveHoverEnd,
   onOpenAuth,
+  isLoggedIn = false,
+  onOpenChatbot,
 }) => {
+  const handleCtaClick = isLoggedIn ? (onOpenChatbot ?? onOpenAuth) : onOpenAuth;
+  const ctaText = isLoggedIn ? 'Open chatbot' : footerContent.brand.cta;
   const footerRef = useRef<HTMLElement | null>(null);
   const isInView = useInView(footerRef, { amount: 0.15, once: true });
 
@@ -79,7 +85,7 @@ export const Footer: React.FC<FooterProps> = ({
         <div className="absolute -bottom-12 right-1/4 w-[400px] h-[400px] rounded-full bg-gradient-to-tr from-[#38BDF8]/20 to-[#06B6D4]/15 blur-[95px] pointer-events-none z-0" />
         {/* Top 2-Column Block */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-start">
-          {/* Left Column (Brand + Tagline + Adopt Me CTA + Email Form) */}
+          {/* Left Column (Brand + Tagline + Start Learning CTA + Email Form) */}
           <div className="lg:col-span-6 flex flex-col items-start pr-0 lg:pr-8">
             {/* Logo & Brand Name */}
             <div
@@ -108,12 +114,13 @@ export const Footer: React.FC<FooterProps> = ({
             {/* CTA Button: black with white text */}
             <button
               type="button"
-              onClick={onOpenAuth}
-              onMouseEnter={() => onInteractiveHoverStart?.('cta')}
+              onClick={handleCtaClick}
+              data-cursor="button"
+              onMouseEnter={() => onInteractiveHoverStart?.(isLoggedIn ? 'chatbot-cta' : 'cta')}
               onMouseLeave={onInteractiveHoverEnd}
               className="mt-6 px-6 py-2.5 rounded-full bg-[#111113] text-white text-sm font-medium tracking-tight shadow-[0_4px_14px_rgba(0,0,0,0.12)] cursor-pointer inline-flex items-center gap-2 active:scale-98 transition-transform"
             >
-              <span>{footerContent.brand.cta}</span>
+              <span>{ctaText}</span>
             </button>
 
             {/* Email Subscription Pill Form */}
@@ -255,8 +262,8 @@ export const Footer: React.FC<FooterProps> = ({
                   isInView
                     ? { y: '0%', opacity: 1 }
                     : isReducedMotion
-                    ? { opacity: 0 }
-                    : { y: '100%', opacity: 0 }
+                      ? { opacity: 0 }
+                      : { y: '100%', opacity: 0 }
                 }
                 transition={{
                   duration: isReducedMotion ? 0.4 : 1.3,

@@ -29,7 +29,7 @@ export const siteContent = {
       { id: 'features', label: 'Features', active: false },
       { id: 'about', label: 'About Us', active: false },
     ] as NavLinkItem[],
-    cta: 'Adopt Me',
+    cta: 'Start Learning',
   },
   hero: {
     headline: {
@@ -38,7 +38,7 @@ export const siteContent = {
       line3: "Work smarter.",
     },
     subtitle: "From confusing algorithms to animated explanations. Learn the logic, explore your code, and make every problem click with pebble.",
-    cta: "Adopt Me",
+    cta: "Start Learning",
   },
   carousel: {
     slides: [
@@ -149,7 +149,7 @@ export const footerContent = {
   brand: {
     name: 'pebble',
     tagline: 'Watch algorithms think,\none step at a time.',
-    cta: 'Adopt Me ↗',
+    cta: 'Start Learning ↗',
   },
   newsletter: {
     label: 'Stay updated',

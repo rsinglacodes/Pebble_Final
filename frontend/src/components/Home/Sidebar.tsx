@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, MessageSquare, Code2, Sparkles, Settings } from 'lucide-react';
+import { Plus, MessageSquare } from 'lucide-react';
 import { UserChip } from './UserChip.tsx';
 
 interface SidebarProps {
@@ -75,46 +75,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           >
             <MessageSquare className="w-5 h-5 stroke-[1.75]" />
           </button>
-
-          {/* Quick Algorithm Library */}
-          <button
-            type="button"
-            onClick={() => onQuickStarter('Explain Two Sum with two pointers')}
-            data-cursor="button"
-            title="Two Pointers starter"
-            aria-label="Two Pointers starter"
-            className="w-10 h-10 rounded-xl flex items-center justify-center text-[#6B6B73] hover:text-[#111113] hover:bg-white/60 transition-all cursor-pointer"
-          >
-            <Code2 className="w-5 h-5 stroke-[1.75]" />
-          </button>
-
-          {/* Visualizer Playground */}
-          <button
-            type="button"
-            onClick={() => onQuickStarter('How does Binary Search divide the array?')}
-            data-cursor="button"
-            title="Binary Search visualizer"
-            aria-label="Binary Search visualizer"
-            className="w-10 h-10 rounded-xl flex items-center justify-center text-[#6B6B73] hover:text-[#111113] hover:bg-white/60 transition-all cursor-pointer"
-          >
-            <Sparkles className="w-5 h-5 stroke-[1.75]" />
-          </button>
         </div>
       </div>
 
-      {/* Bottom: Settings & User Profile Chip */}
+      {/* Bottom: User Profile Chip */}
       <div className="flex flex-col items-center gap-3">
-        <button
-          type="button"
-          onClick={onOpenSettings}
-          data-cursor="button"
-          title="Visualizer settings"
-          aria-label="Visualizer settings"
-          className="w-10 h-10 rounded-xl flex items-center justify-center text-[#6B6B73] hover:text-[#111113] hover:bg-white/60 transition-all cursor-pointer"
-        >
-          <Settings className="w-5 h-5 stroke-[1.75]" />
-        </button>
-
         <UserChip onLogout={onLogout} onOpenSettings={onOpenSettings} />
       </div>
     </aside>
